@@ -47,7 +47,7 @@ OPENCODE_GO_API_KEY: sk-xxxxxxxx
 ### 1. 克隆到本地
 
 ```bash
-git clone https://github.com/<your-name>/dsh-opencode-go-usage.git
+git clone https://github.com/xlsuiyee/dsh-opencode-go-usage.git
 ```
 
 ### 2. 接入插件目录

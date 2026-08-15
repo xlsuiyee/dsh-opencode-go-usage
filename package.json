@@ -11,6 +11,11 @@
     "usage",
     "quota"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xlsuiyee/dsh-opencode-go-usage.git"
+  },
+  "homepage": "https://github.com/xlsuiyee/dsh-opencode-go-usage",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
