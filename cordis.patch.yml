@@ -1,0 +1,12 @@
+# dsh-opencode-go-usage bundle layer.
+#
+# Declared through `dsh.bundle.patch` in package.json, so the DeepSeek Harness
+# plugin manager can install, enable and disable this plugin as a normal
+# profile bundle instead of it being refused with `not-a-bundle`.
+#
+# The row's module specifier is the package's own name: it is resolved from the
+# profile directory (profile `node_modules`), which is where the plugin package
+# is linked.
+- insert:
+    - id: dsh-opencode-go-usage
+      name: dsh-opencode-go-usage

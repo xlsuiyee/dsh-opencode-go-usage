@@ -110,3 +110,48 @@ ln -s /path/to/dsh-opencode-go-usage ~/.dsh/profiles/node_modules/dsh-opencode-g
 ## 许可
 
 [MIT](./LICENSE)
+
+---
+
+## DSH 0.2.0 bundle 安装（本副本的改动）
+
+DeepSeek Harness **0.2.0** 起，桌面版 / `dsh web` 的插件管理器只把「**bundle**」当作可安装的插件：
+包必须在 `package.json` 里声明 `dsh.bundle.patch`，并随包提供一个 `cordis.patch.yml` 插入层。
+只声明 `dsh.client` 的纯插件（本仓库 0.1.0 原版）会在安装时被拒绝：
+
+```
+not-a-bundle: dsh-opencode-go-usage declares no dsh.bundle
+```
+
+（旧版的 `dsh 0.1.5` 只要求把包放进 `profiles/node_modules` 并在 `cordis.patch.yml` 里 `insert`，
+所以原版的安装说明对 0.2.0 已经失效。）
+
+本副本（`0.1.1`）的改动只有两处，功能代码 `lib/*.js` 未改：
+
+1. `package.json` 增加
+   ```json
+   "dsh": {
+     "bundle": { "patch": "./cordis.patch.yml" },
+     "client": { "platform": "web", "inject": ["@deepseek-ai/dsh-client-ui-sidebar"] }
+   }
+   ```
+   并导出 `./cordis.patch.yml`。
+2. 新增 `cordis.patch.yml`：
+   ```yaml
+   - insert:
+       - id: dsh-opencode-go-usage
+         name: dsh-opencode-go-usage
+   ```
+
+安装到某个 profile（以 `desktop` 为例）：
+
+1. 把包放到 profile 能解析到的位置，例如
+   `$DSH_HOME/profiles/desktop/node_modules/dsh-opencode-go-usage` → 指向本目录的 junction。
+2. 在 `$DSH_HOME/profiles/desktop/package.json` 中
+   - `dependencies` 加入 `"dsh-opencode-go-usage": "link:../../plugins/dsh-opencode-go-usage"`
+   - `dsh.profile.bundles` 末尾加入 `"dsh-opencode-go-usage"`
+3. 该 profile 的 `package.json` 被 HMR 监听，保存即热加载；`GET /dsh-opencode-go-usage` 返回用量 JSON
+   即表示宿主半边已生效，侧边栏底部出现 `Go …%` 即表示浏览器半边已生效。
+
+> 上游仓库若要支持 0.2.0，只需把上面第 1、2 点提交进包即可，之后
+> `github:xlsuiyee/dsh-opencode-go-usage` 就能被插件管理器正常安装。

@@ -1,6 +1,6 @@
 {
   "name": "dsh-opencode-go-usage",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Show the OpenCode Go plan usage / remaining quota in the DeepSeek Harness sidebar",
   "keywords": [
     "deepseek-harness",
@@ -25,9 +25,13 @@
     "./client": {
       "default": "./lib/client.js"
     },
+    "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "inject": [
@@ -37,7 +41,8 @@
   },
   "files": [
     "lib/index.js",
-    "lib/client.js"
+    "lib/client.js",
+    "cordis.patch.yml"
   ],
   "license": "MIT",
   "peerDependencies": {
