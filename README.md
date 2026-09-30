@@ -36,6 +36,34 @@ Authorization: Bearer <OPENCODE_GO_API_KEY>
 
 > 注意:官方接口只返回**百分比 + 重置时间**,不返回精确的 token 用量数字;如需「已用 X / 限额 Y」需要抓取 opencode.ai 工作区页面,方案更脆弱。
 
+### 真实用量(控制台 API,0.2.0 起)
+
+`/zen/go/v1/usage` 只给百分比。0.2.0 起插件另外调用 **V2 控制台的用量接口**,把真实数字补进面板:
+
+```
+GET https://opencode.ai/console/api/usage/summary?range=24h|7d
+Authorization: Bearer <同一个 OPENCODE_GO_API_KEY>
+```
+
+返回 `totalRequests` / 各 token 计数 / `totalCostMicroCents`(microcents,1e8 = 1 美元),面板里显示成「真实用量（控制台 API）」两行,例如 `385 次请求 · 62.5M tokens · $1.28`。
+
+这个调用是**尽力而为**的:控制台接口若拒绝(403)或不可达,只是不显示这一段,配额数字照常。
+
+### 为什么百分比和官网控制台有时差 1%
+
+同一个窗口、同一个重置时间,但**取整口径不同**——这是上游两个消费面的差异,不是本插件的问题:
+
+| 消费面 | 算法 | 结果 |
+|---|---|---|
+| `GET /zen/go/v1/usage`(本插件用的) | `Math.floor(usage / limit * 100)` | 向下取整 |
+| 控制台页面 `/console/go` | `(used * 200n + limit) / (limit * 2n)` | 四舍五入 |
+
+源码见 [`zen/go/v1/usage.ts`](https://github.com/anomalyco/opencode/blob/dev/packages/console/app/src/routes/zen/go/v1/usage.ts) → [`console/core/subscription.ts`](https://github.com/anomalyco/opencode/blob/dev/packages/console/core/src/subscription.ts) 的 `analyze*Usage`;页面侧在控制台 SPA 的 `page-BLJokV8R.js`。
+
+所以真值 2.6% 时接口给 **2%**、官网显示 **3%**;真值 1.4% 时两边都是 1%。插件只能显示接口原值——接口不返回 `usedMicroCents / limitMicroCents`,小数部分已被丢弃,无法反推。面板底部和悬停提示里都写明了这一点。
+
+> 参考额度(控制台页面里的常量,Go 套餐):5 小时 $12 / UTC 自然周 $30 / 付费周期 $60;Go Plus:$48 / $120 / $240。
+
 ## 安装
 
 前置条件:已安装 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness)(web 模式),并在 `$DSH_HOME/.credentials.yaml` 中配置了 OpenCode Go 的 API Key:
@@ -95,9 +123,11 @@ ln -s /path/to/dsh-opencode-go-usage ~/.dsh/profiles/node_modules/dsh-opencode-g
 
 ## 工作原理
 
-- **宿主端**(`lib/index.js`):注册 loopback 路由 `GET /dsh-opencode-go-usage`,从凭据缝(`ctx.credentials`)解析 Key 并代理官方接口;失败时依次回退几个候选端点
+- **宿主端**(`lib/index.js`):注册 loopback 路由 `GET /dsh-opencode-go-usage`,从凭据缝(`ctx.credentials`)解析 Key 并代理官方接口;失败时依次回退几个候选端点。0.2.0 起并行请求 V2 控制台的用量接口,结果放在响应的 `console` 字段(失败只降级)
 - **浏览器端**(`lib/client.js`):通过 `sidebar.footer.action` 插槽渲染按钮与图表面板,`fetch` 相对路径即可,零跨域
 - 无任何第三方运行时依赖(宿主端零 import,浏览器端仅使用 dsh 提供的 `react`)
+
+> **宿主半边改动需重启 DSH 才生效**。DSH 按模块对象缓存插件 runtime,改文件再重新挂载不会重新 `import`(官方文档:Package replacements require restarting the process)。浏览器半边走 `/plugins/events` 自动热更新,无需重启。
 
 ## 常见问题
 
@@ -106,6 +136,8 @@ ln -s /path/to/dsh-opencode-go-usage ~/.dsh/profiles/node_modules/dsh-opencode-g
 | 按钮显示 `‒` | 查询失败,悬停按钮查看具体错误(通常是 Key 未配置) |
 | 按钮显示 `—` | 接口返回 200 但未识别到用量字段,悬停查看原始响应 |
 | 只有百分比没有具体 token 数 | 官方接口设计如此,见上文「数据来源」 |
+| 百分比比官网控制台少 1% | 上游取整口径不同(接口 `Math.floor`、页面四舍五入),不是插件出错,见上文「为什么百分比和官网控制台有时差 1%」 |
+| 面板里没有「真实用量」那一块 | 控制台用量接口被拒(403)或不可达;配额数字不受影响,可悬停查看 `console.attempts` |
 
 ## 许可
 
@@ -126,7 +158,9 @@ not-a-bundle: dsh-opencode-go-usage declares no dsh.bundle
 （旧版的 `dsh 0.1.5` 只要求把包放进 `profiles/node_modules` 并在 `cordis.patch.yml` 里 `insert`，
 所以原版的安装说明对 0.2.0 已经失效。）
 
-本副本（`0.1.1`）的改动只有两处，功能代码 `lib/*.js` 未改：
+本副本（`0.2.0`）相对上游 0.1.0 的改动分两类。
+
+**A. 打包成 bundle —— 让它能被 0.2.0 安装（不含逻辑）：**
 
 1. `package.json` 增加
    ```json
@@ -152,6 +186,16 @@ not-a-bundle: dsh-opencode-go-usage declares no dsh.bundle
    - `dsh.profile.bundles` 末尾加入 `"dsh-opencode-go-usage"`
 3. 该 profile 的 `package.json` 被 HMR 监听，保存即热加载；`GET /dsh-opencode-go-usage` 返回用量 JSON
    即表示宿主半边已生效，侧边栏底部出现 `Go …%` 即表示浏览器半边已生效。
+
+**B. 功能增强（0.2.0）—— 改的是 `lib/*.js`：**
+
+- `lib/index.js`：在配额查询之外**并行**请求控制台用量接口，结果放进响应的 `console` 字段；控制台不可达时只降级，不影响配额
+- `lib/client.js`：面板新增「真实用量（控制台 API）」区块，并在面板底部与悬停提示里注明官网 / 接口的取整差异
+
+> ⚠️ **A 类改动保存即热加载；B 类里宿主半边（`lib/index.js`）必须重启 DSH 进程才生效。**
+> 我实测过：改文件、甚至改入口文件名后把这一行 disabled → 再启用，都不会重新 `import` —— DSH 按模块对象缓存插件 runtime，
+> 官方文档也写明「Package replacements require restarting the process to load a fresh JavaScript module generation」。
+> 浏览器半边（`lib/client.js`）通过 `/plugins/events` 的 `rebuilt` 帧自动热更新，不需要重启。
 
 > 上游仓库若要支持 0.2.0，只需把上面第 1、2 点提交进包即可，之后
 > `github:xlsuiyee/dsh-opencode-go-usage` 就能被插件管理器正常安装。
